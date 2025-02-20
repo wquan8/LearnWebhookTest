@@ -1,80 +1,50 @@
+
 import os
-import docx
-import time
-import random
-import re
 from whoosh.index import create_in, open_dir
 from whoosh.fields import Schema, TEXT, ID
 from whoosh.qparser import QueryParser
 
-# ... (Document Generation and Text Extraction functions remain the same) ...
+def create_index(indexdir, files_to_index):
+    # Define the schema for the index
+    schema = Schema(path=ID(stored=True), content=TEXT)
 
-# --- Indexing with Whoosh ---
-def build_whoosh_index(extracted_dir, index_dir):
-    schema = Schema(path=ID(unique=True, stored=True), content=TEXT())  # Add 'stored=True' for path
-    if not os.path.exists(index_dir):
-        os.makedirs(index_dir)
-        ix = create_in(index_dir, schema)
-    else:
-        ix = open_dir(index_dir)
+    # Create the index directory if it doesn't exist
+    if not os.path.exists(indexdir):
+        os.mkdir(indexdir)
 
+    # Create the index
+    ix = create_in(indexdir, schema)
+
+    # Add documents to the index
     writer = ix.writer()
-    for filename in os.listdir(extracted_dir):
-        if filename.endswith(".txt"):
-            filepath = os.path.join(extracted_dir, filename)
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    text = f.read()  # No need to lowercase here, Whoosh does it
-                    writer.add_document(path=filepath, content=text)
-            except Exception as e:
-                print(f"Error reading extracted text file {filepath}: {e}")
+    for filepath in files_to_index:
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+            writer.add_document(path=filepath, content=content)
     writer.commit()
+
     return ix
 
+def search_index(indexdir, query_str):
+    # Open the index
+    ix = open_dir(indexdir)
 
-# --- Searching with Whoosh ---
-def whoosh_search(ix, query):
-    with ix.searcher() as searcher:
-        parser = QueryParser("content", ix.schema)
-        try:
-            q = parser.parse(query)
-            results = searcher.search(q)
-            return results
-        except Exception as e: # Catch parsing errors
-            print(f"Error parsing search query: {e}")
-            return None
+    # Create a query parser
+    qp = QueryParser("content", schema=ix.schema)
+    q = qp.parse(query_str)
 
+    # Search the index
+    with ix.searcher() as s:
+        results = s.search(q)
+        for hit in results:
+            print(hit["path"], hit.score)  # Print the path and score of each hit
 
-
-# --- Main execution ---
 if __name__ == "__main__":
-    # ... (Directory setup and document generation remain the same) ...
+    indexdir = "indexdir"
+    files_to_index = ["file1.txt", "file2.txt", "file3.txt"]  # Replace with your file paths
 
-    index_dir = "whoosh_index"  # Directory for Whoosh index
+    # Create the index
+    ix = create_index(indexdir, files_to_index)
 
-    # 2. Extract Text (same as before)
-    # ...
-
-    # 3. Build Whoosh Index
-    start_time = time.time()
-    ix = build_whoosh_index(extracted_dir, index_dir)
-    end_time = time.time()
-    print(f"Whoosh index building time: {end_time - start_time:.2f} seconds")
-
-    # 4. Search with Whoosh
-    while True:
-        query = input("Enter your search query (or type 'exit'): ")
-        if query.lower() == "exit":
-            break
-
-        start_time = time.time()
-        results = whoosh_search(ix, query)
-        end_time = time.time()
-        print(f"Whoosh search time: {end_time - start_time:.2f} seconds")
-
-        if results:
-            print(f"Found {len(results)} results:")
-            for hit in results:
-                print(f"- {hit['path']} (Score: {hit.score})")  # Access stored path
-        else:
-            print("No results found.")
+    # Search the index
+    search_index(indexdir, "example query")
